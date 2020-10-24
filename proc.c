@@ -32,6 +32,22 @@ cpuid() {
   return mycpu()-cpus;
 }
 
+// Loops over processes to increase run time of running processes
+void
+incruntime(void)
+{
+  acquire(&ptable.lock);
+  struct proc *p;
+
+    for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+    if (p->state == RUNNING) {
+      p->rtime++;
+    }
+  }
+
+  release(&ptable.lock);
+}
+
 // Must be called with interrupts disabled to avoid the caller being
 // rescheduled between reading lapicid and running through the loop.
 struct cpu*
@@ -88,6 +104,9 @@ allocproc(void)
 found:
   p->state = EMBRYO;
   p->pid = nextpid++;
+  p->ctime = ticks;
+  p->etime = 0;
+  p->rtime = 0;
 
   release(&ptable.lock);
 
@@ -262,6 +281,7 @@ exit(void)
   }
 
   // Jump into the scheduler, never to return.
+  curproc->etime = ticks;
   curproc->state = ZOMBIE;
   sched();
   panic("zombie exit");
