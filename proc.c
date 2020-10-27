@@ -378,6 +378,66 @@ waitx(int* wtime, int* rtime)
   }
 }
 
+void
+scheduleRR(struct cpu *c)
+{
+  struct proc *p;
+
+  // Loop over process table looking for process to run.
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->state != RUNNABLE)
+      continue;
+
+    // Switch to chosen process.  It is the process's job
+    // to release ptable.lock and then reacquire it
+    // before jumping back to us.
+    c->proc = p;
+    switchuvm(p);
+    p->state = RUNNING;
+
+    cprintf("RR: %d starting pid %d: %s with ctime %d\n", c->apicid, p->pid, p->name, p->ctime);
+    swtch(&(c->scheduler), p->context);
+    switchkvm();
+
+    // Process is done running for now.
+    // It should have changed its p->state before coming back.
+    c->proc = 0;
+  }
+}
+
+void
+scheduleFCFS(struct cpu *c)
+{
+  struct proc *p;
+  struct proc *serve = 0;
+
+  // Loop over process table looking for process to run.
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->state != RUNNABLE)
+      continue;
+
+    if (!serve || serve->ctime > p->ctime)
+      serve = p;
+  }
+
+  if (serve) {
+    // Switch to chosen process.  It is the process's job
+    // to release ptable.lock and then reacquire it
+    // before jumping back to us.
+    c->proc = serve;
+    switchuvm(serve);
+    serve->state = RUNNING;
+
+    cprintf("FCFS: %d starting pid %d: %s with ctime %d\n", c->apicid, serve->pid, serve->name, serve->ctime);
+    swtch(&(c->scheduler), serve->context);
+    switchkvm();
+
+    // Process is done running for now.
+    // It should have changed its p->state before coming back.
+    c->proc = 0;
+  }
+}
+
 //PAGEBREAK: 42
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
@@ -389,36 +449,15 @@ waitx(int* wtime, int* rtime)
 void
 scheduler(void)
 {
-  struct proc *p;
   struct cpu *c = mycpu();
   c->proc = 0;
-  
-  for(;;){
+  for(;;) {
     // Enable interrupts on this processor.
     sti();
-
-    // Loop over process table looking for process to run.
     acquire(&ptable.lock);
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->state != RUNNABLE)
-        continue;
-
-      // Switch to chosen process.  It is the process's job
-      // to release ptable.lock and then reacquire it
-      // before jumping back to us.
-      c->proc = p;
-      switchuvm(p);
-      p->state = RUNNING;
-
-      swtch(&(c->scheduler), p->context);
-      switchkvm();
-
-      // Process is done running for now.
-      // It should have changed its p->state before coming back.
-      c->proc = 0;
-    }
+    // scheduleRR(c);
+    scheduleFCFS(c);
     release(&ptable.lock);
-
   }
 }
 
