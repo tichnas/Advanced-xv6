@@ -107,6 +107,8 @@ found:
   p->ctime = ticks;
   p->etime = 0;
   p->rtime = 0;
+  p->priority = 60;
+  p->chance = 0;
 
   release(&ptable.lock);
 
@@ -379,6 +381,29 @@ waitx(int* wtime, int* rtime)
 }
 
 void
+shift(struct proc *p, struct cpu *c)
+{
+  if (!p) return;
+
+  // Switch to chosen process.  It is the process's job
+  // to release ptable.lock and then reacquire it
+  // before jumping back to us.
+  p->chance++;
+  c->proc = p;
+  switchuvm(p);
+  p->state = RUNNING;
+
+  cprintf("%d starting pid %d (%s) with ctime %d, priority %d, chance %d\n", c->apicid, p->pid, p->name, p->ctime, p->priority, p->chance);
+  swtch(&(c->scheduler), p->context);
+  switchkvm();
+
+  // Process is done running for now.
+  // It should have changed its p->state before coming back.
+  c->proc = 0;
+}
+
+// Round Robin
+void
 scheduleRR(struct cpu *c)
 {
   struct proc *p;
@@ -388,23 +413,11 @@ scheduleRR(struct cpu *c)
     if(p->state != RUNNABLE)
       continue;
 
-    // Switch to chosen process.  It is the process's job
-    // to release ptable.lock and then reacquire it
-    // before jumping back to us.
-    c->proc = p;
-    switchuvm(p);
-    p->state = RUNNING;
-
-    cprintf("RR: %d starting pid %d: %s with ctime %d\n", c->apicid, p->pid, p->name, p->ctime);
-    swtch(&(c->scheduler), p->context);
-    switchkvm();
-
-    // Process is done running for now.
-    // It should have changed its p->state before coming back.
-    c->proc = 0;
+    shift(p, c);
   }
 }
 
+// First Come First Serve
 void
 scheduleFCFS(struct cpu *c)
 {
@@ -420,22 +433,27 @@ scheduleFCFS(struct cpu *c)
       serve = p;
   }
 
-  if (serve) {
-    // Switch to chosen process.  It is the process's job
-    // to release ptable.lock and then reacquire it
-    // before jumping back to us.
-    c->proc = serve;
-    switchuvm(serve);
-    serve->state = RUNNING;
+  shift(serve, c);
+}
 
-    cprintf("FCFS: %d starting pid %d: %s with ctime %d\n", c->apicid, serve->pid, serve->name, serve->ctime);
-    swtch(&(c->scheduler), serve->context);
-    switchkvm();
+// Priority Based Scheduler with Level 2 Round Robin
+void
+schedulePBS(struct cpu *c)
+{
+  struct proc *p;
+  struct proc *serve = 0;
 
-    // Process is done running for now.
-    // It should have changed its p->state before coming back.
-    c->proc = 0;
+  // Loop over process table looking for process to run.
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->state != RUNNABLE)
+      continue;
+
+    if (!serve || serve->priority > p->priority ||
+      (serve->priority == p->priority && serve->chance > p->chance))
+      serve = p;
   }
+
+  shift(serve, c);
 }
 
 //PAGEBREAK: 42
@@ -456,7 +474,8 @@ scheduler(void)
     sti();
     acquire(&ptable.lock);
     // scheduleRR(c);
-    scheduleFCFS(c);
+    // scheduleFCFS(c);
+    schedulePBS(c);
     release(&ptable.lock);
   }
 }

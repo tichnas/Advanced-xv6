@@ -52,6 +52,8 @@ struct proc {
   uint ctime;                  // Creation time of process
   uint etime;                  // End time of process
   uint rtime;                  // Running time of process
+  uint priority;               // Priority of process ([0,100], lower value = higher priority)
+  uint chance;                 // No. of times it got chance in RR scheduling (not required for level 1 RR)
 };
 
 // Process memory is laid out contiguously, low addresses first:
