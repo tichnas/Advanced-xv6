@@ -38,6 +38,17 @@ sys_waitx(void)
 }
 
 int
+sys_set_priority(void)
+{
+  int priority;
+  int pid;
+
+  if (argint(0, &priority) < 0 || argint(1, &pid) < 0)
+    return -1;
+  return set_priority(priority, pid);
+}
+
+int
 sys_kill(void)
 {
   int pid;
