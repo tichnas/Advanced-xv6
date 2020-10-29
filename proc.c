@@ -68,10 +68,10 @@ set_priority(int new_priority, int pid)
 
   cprintf("Changed %d (%s) priority from %d to %d\n", p->pid, p->name, old_priority, new_priority);
 
+  release(&ptable.lock);
+
   if (new_priority < old_priority)
     yield();
-
-  release(&ptable.lock);
 
   return old_priority;
 }
