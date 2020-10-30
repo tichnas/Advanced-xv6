@@ -52,11 +52,9 @@ struct proc {
   uint ctime;                  // Creation time of process
   uint etime;                  // End time of process
   uint rtime;                  // Running time of process
-  uint priority;               // Priority of process ([0,100], lower value = higher priority)
-  uint chance;                 // No. of times it got chance in RR scheduling (not required for level 1 RR)
-  uint queue;                  // Current priority queue
+  uint queue;                  // Current priority queue ([0,4] for MLFQ & [0,100] for PBS)
   uint allowedtime;            // Ticks allowed for a process to run in a particular queue
-  uint qtime;                  // Time at which process entered current queue
+  uint qtime;                  // Time at which process entered current queue (0 if process is not in any queue)
 };
 
 struct node {
@@ -66,7 +64,7 @@ struct node {
 
 struct node nodes[NPROC];
 
-struct node *queues[5];
+struct node *queues[101];
 
 // Process memory is laid out contiguously, low addresses first:
 //   text

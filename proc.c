@@ -25,7 +25,7 @@ pinit(void)
 {
   initlock(&ptable.lock, "ptable");
 
-  for (int i = 0; i < 5; i++)
+  for (int i = 0; i < 101; i++)
     queues[i] = 0;
 }
 
@@ -49,34 +49,6 @@ incruntime(void)
   }
 
   release(&ptable.lock);
-}
-
-int
-set_priority(int new_priority, int pid)
-{
-  if (new_priority < 0 || new_priority > 100)
-    return -1;
-
-  acquire(&ptable.lock);
-  struct proc *p;
-  int old_priority = -1;
-
-  for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
-    if (p->pid == pid) {
-      old_priority = p->priority;
-      p->priority = new_priority;
-      break;
-    }
-  }
-
-  cprintf("Changed %d (%s) priority from %d to %d\n", p->pid, p->name, old_priority, new_priority);
-
-  release(&ptable.lock);
-
-  if (new_priority < old_priority)
-    yield();
-
-  return old_priority;
 }
 
 void
@@ -131,6 +103,38 @@ void remove(struct node **head, int pid)
     }
     cur = cur->next;
   }
+}
+
+int
+set_priority(int new_priority, int pid)
+{
+  if (new_priority < 0 || new_priority > 100)
+    return -1;
+
+  acquire(&ptable.lock);
+  struct proc *p;
+  int old_priority = -1;
+
+  for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+    if (p->pid == pid) {
+      old_priority = p->queue;
+      p->queue = new_priority;
+      if (p->qtime) {
+        remove(&queues[old_priority], p->pid);
+        push(&queues[new_priority], p);
+      }
+      break;
+    }
+  }
+
+  // cprintf("Changed %d (%s) priority from %d to %d\n", p->pid, p->name, old_priority, new_priority);
+
+  release(&ptable.lock);
+
+  if (myproc() && new_priority < myproc()->queue)
+    yield();
+
+  return old_priority;
 }
 
 // Must be called with interrupts disabled to avoid the caller being
@@ -192,10 +196,14 @@ found:
   p->ctime = ticks;
   p->etime = 0;
   p->rtime = 0;
-  p->priority = 60;
-  p->chance = 0;
+  p->queue = 60;
 
   release(&ptable.lock);
+
+  if (1) {
+    if (myproc() && 60 < myproc()->queue)
+      yield();
+  }
 
   // Allocate kernel stack.
   if((p->kstack = kalloc()) == 0){
@@ -465,6 +473,7 @@ waitx(int* wtime, int* rtime)
   }
 }
 
+// Shifts given CPU to given process
 void
 shift(struct proc *p, struct cpu *c)
 {
@@ -473,12 +482,11 @@ shift(struct proc *p, struct cpu *c)
   // Switch to chosen process.  It is the process's job
   // to release ptable.lock and then reacquire it
   // before jumping back to us.
-  p->chance++;
   c->proc = p;
   switchuvm(p);
   p->state = RUNNING;
 
-  cprintf("%d starting pid %d (%s) with ctime %d, priority %d, chance %d, queue %d, qtime %d at %d\n", c->apicid, p->pid, p->name, p->ctime, p->priority, p->chance, p->queue, p->qtime, ticks);
+  // cprintf("%d starting pid %d (%s) with ctime %d, queue %d, qtime %d at %d\n", c->apicid, p->pid, p->name, p->ctime, p->queue, p->qtime, ticks);
   
   swtch(&(c->scheduler), p->context);
   switchkvm();
@@ -499,6 +507,7 @@ scheduleRR(struct cpu *c)
     if(p->state != RUNNABLE)
       continue;
 
+    p->allowedtime = 1;
     shift(p, c);
   }
 }
@@ -527,19 +536,31 @@ void
 schedulePBS(struct cpu *c)
 {
   struct proc *p;
-  struct proc *serve = 0;
 
-  // Loop over process table looking for process to run.
+  // Check for runnable processes not in any queue
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
     if(p->state != RUNNABLE)
       continue;
 
-    if (!serve || serve->priority > p->priority ||
-      (serve->priority == p->priority && serve->chance > p->chance))
-      serve = p;
+    if ((p->qtime) == 0) {
+      p->qtime = ticks + 1;
+      push(&queues[p->queue], p);
+      // cprintf("Push %d\n", p->pid);
+    }
   }
 
-  shift(serve, c);
+  int q = 0;
+  while (q < 101 && !queues[q])  q++;
+
+  if (q == 101) return;
+
+  p = pop(&queues[q]);
+  if (q != p->queue) cprintf("ERROR !!!\n");
+
+  p->allowedtime = 1;
+  shift(p, c);
+
+  p->qtime = 0;
 }
 
 // Multi Level Feedback Queue
@@ -616,8 +637,8 @@ scheduler(void)
     acquire(&ptable.lock);
     // scheduleRR(c);
     // scheduleFCFS(c);
-    // schedulePBS(c);
-    scheduleMLFQ(c);
+    schedulePBS(c);
+    // scheduleMLFQ(c);
     release(&ptable.lock);
   }
 }
