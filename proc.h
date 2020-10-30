@@ -54,7 +54,19 @@ struct proc {
   uint rtime;                  // Running time of process
   uint priority;               // Priority of process ([0,100], lower value = higher priority)
   uint chance;                 // No. of times it got chance in RR scheduling (not required for level 1 RR)
+  uint queue;                  // Current priority queue
+  uint allowedtime;            // Ticks allowed for a process to run in a particular queue
+  uint qtime;                  // Time at which process entered current queue
 };
+
+struct node {
+  struct proc *p;
+  struct node *next;
+};
+
+struct node nodes[NPROC];
+
+struct node *queues[5];
 
 // Process memory is laid out contiguously, low addresses first:
 //   text

@@ -24,6 +24,9 @@ void
 pinit(void)
 {
   initlock(&ptable.lock, "ptable");
+
+  for (int i = 0; i < 5; i++)
+    queues[i] = 0;
 }
 
 // Must be called with interrupts disabled
@@ -74,6 +77,60 @@ set_priority(int new_priority, int pid)
     yield();
 
   return old_priority;
+}
+
+void
+push(struct node **head, struct proc *p)
+{
+  struct node *newNode = 0;
+  for (int i = 0; i < NPROC; i++) {
+    if (!(nodes[i].p)) {
+      newNode = &(nodes[i]);
+      break;
+    }
+  }
+  newNode->next = 0;
+  newNode->p = p;
+
+  if (!(*head)) {
+    *head = newNode;
+  } else {
+    struct node *cur = *head;
+    while (cur->next) cur = cur->next;
+    cur->next = newNode;
+  }
+}
+
+struct proc*
+pop(struct node **head)
+{
+  if (!(*head)) return 0;
+
+  struct node *del = (*head);
+  *head = (*head)->next;
+  struct proc *ret = del->p;
+  del->p = 0;
+  return ret;
+}
+
+void remove(struct node **head, int pid)
+{
+  if ((*head)->p->pid == pid) {
+    (*head)->p = 0;
+    *head = (*head)->next;
+    return;
+  }
+
+  struct node *cur = *head;
+  while (cur && cur->next) {
+    if (cur->next->p->pid == pid) {
+      struct node *del = cur->next;
+      cur->next = del->next;
+      del->p = 0;
+      return;
+    }
+    cur = cur->next;
+  }
 }
 
 // Must be called with interrupts disabled to avoid the caller being
@@ -421,7 +478,8 @@ shift(struct proc *p, struct cpu *c)
   switchuvm(p);
   p->state = RUNNING;
 
-  cprintf("%d starting pid %d (%s) with ctime %d, priority %d, chance %d\n", c->apicid, p->pid, p->name, p->ctime, p->priority, p->chance);
+  cprintf("%d starting pid %d (%s) with ctime %d, priority %d, chance %d, queue %d, qtime %d at %d\n", c->apicid, p->pid, p->name, p->ctime, p->priority, p->chance, p->queue, p->qtime, ticks);
+  
   swtch(&(c->scheduler), p->context);
   switchkvm();
 
@@ -484,6 +542,61 @@ schedulePBS(struct cpu *c)
   shift(serve, c);
 }
 
+// Multi Level Feedback Queue
+void
+scheduleMLFQ(struct cpu *c) {
+  struct proc *p;
+  struct node* cur;
+
+  // Check for runnable processes not in any queue
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->state != RUNNABLE)
+      continue;
+
+    if ((p->qtime) == 0) {
+      p->queue = 0;
+      p->qtime = ticks + 1;
+      push(&queues[0], p);
+    }
+  }
+
+  // Age the processes
+  for (int i = 1; i < 5; i++) {
+    cur = queues[i];
+    while (cur) {
+      p = cur->p;
+      if (1 + ticks - p->qtime > 100) {
+        remove(&queues[i], p->pid);
+        p->queue = i - 1;
+        p->qtime = ticks + 1;
+        push(&queues[i-1], p);
+      }
+      cur = cur->next;
+    }
+  }
+
+  int q = 0;
+  while (q < 5 && !queues[q])  q++;
+
+  if (q == 5) return;
+
+  p = pop(&queues[q]);
+
+  p->allowedtime = (1 << q);
+
+  shift(p, c);
+
+  p->qtime = 0;
+
+  if (p->state == RUNNABLE) {
+    if (p->allowedtime == 0 && q < 4)  q++;
+
+    p->qtime = ticks + 1;
+    p->queue = q;
+    push(&queues[q], p);
+  }
+}
+
 //PAGEBREAK: 42
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
@@ -503,7 +616,8 @@ scheduler(void)
     acquire(&ptable.lock);
     // scheduleRR(c);
     // scheduleFCFS(c);
-    schedulePBS(c);
+    // schedulePBS(c);
+    scheduleMLFQ(c);
     release(&ptable.lock);
   }
 }
