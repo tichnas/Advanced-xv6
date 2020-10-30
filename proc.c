@@ -142,15 +142,15 @@ ps(void)
   char* states[] = { "UNUSED", "EMBRYO  ", "SLEEPING", "RUNNABLE", "RUNNING ", "ZOMBIE  " };
 
   cprintf("PID\t");
-  if (1) {
+  #ifdef PBS
     cprintf("Priority\t");
-  }
+  #endif
   cprintf("State   \tr_time\tw_time\tn_run\t");
-  if (1) {
+  #ifdef MLFQ
     cprintf("cur_q\t");
     for (int i = 0; i < 5; i++)
       cprintf("q%d\t", i);
-  }
+  #endif
   cprintf("\n");
 
   acquire(&ptable.lock);
@@ -161,15 +161,15 @@ ps(void)
       continue;
 
     cprintf("%d\t", p->pid);
-    if (1) {
-      cprintf("%d\t", p->queue);
-    }
-    cprintf("\t%s\t%d\t%d\t%d\t", states[p->state], p->rtime, p->wtime, p->n_run);
-    if (1) {
+    #ifdef PBS
+      cprintf("%d\t\t", p->queue);
+    #endif
+    cprintf("%s\t%d\t%d\t%d\t", states[p->state], p->rtime, p->wtime, p->n_run);
+    #ifdef MLFQ
       cprintf("%d\t", p->queue);
       for (int i = 0; i < 5; i++)
         cprintf("%d\t", p->q[i]);
-    }
+    #endif
     cprintf("\n");
   }
 
@@ -681,10 +681,19 @@ scheduler(void)
     // Enable interrupts on this processor.
     sti();
     acquire(&ptable.lock);
-    // scheduleRR(c);
-    // scheduleFCFS(c);
-    schedulePBS(c);
-    // scheduleMLFQ(c);
+    
+    #ifdef RR
+      scheduleRR(c);
+    #endif
+    #ifdef FCFS
+      scheduleFCFS(c);
+    #endif
+    #ifdef PBS
+      schedulePBS(c);
+    #endif
+    #ifdef MLFQ
+      scheduleMLFQ(c);
+    #endif
     release(&ptable.lock);
   }
 }
