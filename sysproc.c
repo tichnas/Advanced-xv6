@@ -48,6 +48,11 @@ sys_set_priority(void)
   return set_priority(priority, pid);
 }
 
+void sys_ps(void)
+{
+  return ps();
+}
+
 int
 sys_kill(void)
 {

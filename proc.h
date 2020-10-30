@@ -55,6 +55,9 @@ struct proc {
   uint queue;                  // Current priority queue ([0,4] for MLFQ & [0,100] for PBS)
   uint allowedtime;            // Ticks allowed for a process to run in a particular queue
   uint qtime;                  // Time at which process entered current queue (0 if process is not in any queue)
+  uint n_run;                  // No. of times process was picked by scheduler
+  uint q[5];                   // No. of ticks received in every queue (only for MLFQ)
+  uint wtime;                  // Last waiting time (reset when gets cpu anytime or queue changes in MLFQ)
 };
 
 struct node {

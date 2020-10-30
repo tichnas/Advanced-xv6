@@ -39,16 +39,14 @@ cpuid() {
 void
 incruntime(void)
 {
-  acquire(&ptable.lock);
   struct proc *p;
 
     for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
-    if (p->state == RUNNING) {
+    if (p->state == RUNNING)
       p->rtime++;
-    }
+    if (p->state == RUNNABLE)
+      p->wtime++;
   }
-
-  release(&ptable.lock);
 }
 
 void
@@ -137,6 +135,47 @@ set_priority(int new_priority, int pid)
   return old_priority;
 }
 
+void
+ps(void)
+{
+  struct proc *p;
+  char* states[] = { "UNUSED", "EMBRYO  ", "SLEEPING", "RUNNABLE", "RUNNING ", "ZOMBIE  " };
+
+  cprintf("PID\t");
+  if (1) {
+    cprintf("Priority\t");
+  }
+  cprintf("State   \tr_time\tw_time\tn_run\t");
+  if (1) {
+    cprintf("cur_q\t");
+    for (int i = 0; i < 5; i++)
+      cprintf("q%d\t", i);
+  }
+  cprintf("\n");
+
+  acquire(&ptable.lock);
+
+  // Loop over process table looking for process to run.
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->state == UNUSED)
+      continue;
+
+    cprintf("%d\t", p->pid);
+    if (1) {
+      cprintf("%d\t", p->queue);
+    }
+    cprintf("\t%s\t%d\t%d\t%d\t", states[p->state], p->rtime, p->wtime, p->n_run);
+    if (1) {
+      cprintf("%d\t", p->queue);
+      for (int i = 0; i < 5; i++)
+        cprintf("%d\t", p->q[i]);
+    }
+    cprintf("\n");
+  }
+
+  release(&ptable.lock);
+}
+
 // Must be called with interrupts disabled to avoid the caller being
 // rescheduled between reading lapicid and running through the loop.
 struct cpu*
@@ -197,6 +236,9 @@ found:
   p->etime = 0;
   p->rtime = 0;
   p->queue = 60;
+  p->n_run = 0;
+  p->wtime = 0;
+  for (int i = 0; i < 5; i++) p->q[i] = 0;
 
   release(&ptable.lock);
 
@@ -485,6 +527,9 @@ shift(struct proc *p, struct cpu *c)
   c->proc = p;
   switchuvm(p);
   p->state = RUNNING;
+  p->n_run++;
+  p->wtime = 0;
+  if (p->queue < 5) p->q[p->queue]++;
 
   // cprintf("%d starting pid %d (%s) with ctime %d, queue %d, qtime %d at %d\n", c->apicid, p->pid, p->name, p->ctime, p->queue, p->qtime, ticks);
   
@@ -590,6 +635,7 @@ scheduleMLFQ(struct cpu *c) {
         remove(&queues[i], p->pid);
         p->queue = i - 1;
         p->qtime = ticks + 1;
+        p->wtime = 0;
         push(&queues[i-1], p);
       }
       cur = cur->next;
