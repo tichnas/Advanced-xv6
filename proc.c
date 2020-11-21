@@ -35,17 +35,17 @@ cpuid() {
   return mycpu()-cpus;
 }
 
-// Loops over processes to increase run time of running processes
+// Loops over processes to increase waiting and io time of processes
 void
-incruntime(void)
+inctime(void)
 {
   struct proc *p;
 
     for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
-    if (p->state == RUNNING)
-      p->rtime++;
     if (p->state == RUNNABLE)
       p->wtime++;
+    if (p->state == SLEEPING)
+      p->iotime++;
   }
 }
 
@@ -247,6 +247,7 @@ found:
   p->queue = 60;
   p->n_run = 0;
   p->wtime = 0;
+  p->iotime = 0;
   for (int i = 0; i < 5; i++) p->q[i] = 0;
 
   release(&ptable.lock);
@@ -504,7 +505,7 @@ waitx(int* wtime, int* rtime)
       if(p->state == ZOMBIE){
         // Found one.
         *rtime = p->rtime;
-        *wtime = p->etime - p->ctime - p->rtime;
+        *wtime = p->etime - p->ctime - p->rtime - p->iotime;
         pid = p->pid;
         kfree(p->kstack);
         p->kstack = 0;

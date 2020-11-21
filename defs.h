@@ -121,7 +121,7 @@ int             wait(void);
 int             waitx(int*, int*);
 void            wakeup(void*);
 void            yield(void);
-void            incruntime(void);
+void            inctime(void);
 int             set_priority(int, int);
 void            ps(void);
 
