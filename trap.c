@@ -104,6 +104,7 @@ trap(struct trapframe *tf)
   if(myproc() && myproc()->state == RUNNING &&
     tf->trapno == T_IRQ0+IRQ_TIMER) {
       myproc()->allowedtime--;
+      if (myproc()->queue < 5) myproc()->q[myproc()->queue]++;
       
       if (myproc()->allowedtime == 0) {
         yield();

@@ -176,6 +176,15 @@ ps(void)
   release(&ptable.lock);
 }
 
+void
+assignQueue(struct proc *p) {
+  if (p->queue > 4)
+    p->queue = 0;
+  p->qtime = ticks + 1;
+  p->wtime = 0;
+  push(&queues[0], p);
+}
+
 // Must be called with interrupts disabled to avoid the caller being
 // rescheduled between reading lapicid and running through the loop.
 struct cpu*
@@ -305,6 +314,9 @@ userinit(void)
   acquire(&ptable.lock);
 
   p->state = RUNNABLE;
+  #ifdef MLFQ
+    assignQueue(p);
+  #endif
 
   release(&ptable.lock);
 }
@@ -371,6 +383,9 @@ fork(void)
   acquire(&ptable.lock);
 
   np->state = RUNNABLE;
+  #ifdef MLFQ
+    assignQueue(np);
+  #endif
 
   release(&ptable.lock);
 
@@ -529,7 +544,6 @@ shift(struct proc *p, struct cpu *c)
   p->state = RUNNING;
   p->n_run++;
   p->wtime = 0;
-  if (p->queue < 5) p->q[p->queue]++;
 
   // cprintf("%d starting pid %d (%s) with ctime %d, queue %d, qtime %d at %d\n", c->apicid, p->pid, p->name, p->ctime, p->queue, p->qtime, ticks);
   
@@ -619,11 +633,8 @@ scheduleMLFQ(struct cpu *c) {
     if(p->state != RUNNABLE)
       continue;
 
-    if ((p->qtime) == 0) {
-      p->queue = 0;
-      p->qtime = ticks + 1;
-      push(&queues[0], p);
-    }
+    if ((p->qtime) == 0)
+      assignQueue(p);
   }
 
   // Age the processes
@@ -803,8 +814,13 @@ wakeup1(void *chan)
   struct proc *p;
 
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
-    if(p->state == SLEEPING && p->chan == chan)
+    if(p->state == SLEEPING && p->chan == chan) {
       p->state = RUNNABLE;
+      #ifdef MLFQ
+        assignQueue(p);
+      #endif
+    }
+      
 }
 
 // Wake up all processes sleeping on chan.
@@ -829,8 +845,12 @@ kill(int pid)
     if(p->pid == pid){
       p->killed = 1;
       // Wake process from sleep if necessary.
-      if(p->state == SLEEPING)
+      if(p->state == SLEEPING) {
         p->state = RUNNABLE;
+        #ifdef MLFQ
+          assignQueue(p);
+        #endif
+      }
       release(&ptable.lock);
       return 0;
     }
