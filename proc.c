@@ -183,6 +183,10 @@ assignQueue(struct proc *p) {
   p->qtime = ticks + 1;
   p->wtime = 0;
   push(&queues[0], p);
+  #ifdef GRAPH
+    if (p->pid > 3)
+      cprintf("GRAPH %d %d %d\n", p->pid - 4, ticks, p->queue);
+  #endif
 }
 
 // Must be called with interrupts disabled to avoid the caller being
@@ -649,6 +653,10 @@ scheduleMLFQ(struct cpu *c) {
         p->qtime = ticks + 1;
         p->wtime = 0;
         push(&queues[i-1], p);
+        #ifdef GRAPH
+          if (p->pid > 3)
+            cprintf("GRAPH %d %d %d\n", p->pid - 4, ticks, p->queue);
+        #endif
       }
       cur = cur->next;
     }
@@ -674,6 +682,11 @@ scheduleMLFQ(struct cpu *c) {
     p->queue = q;
     push(&queues[q], p);
   }
+
+  #ifdef GRAPH
+    if (p->pid > 3)
+      cprintf("GRAPH %d %d %d\n", p->pid - 4, ticks, p->queue);
+  #endif
 }
 
 //PAGEBREAK: 42

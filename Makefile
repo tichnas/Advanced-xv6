@@ -101,6 +101,9 @@ ifeq ($(SCHEDULER), MLFQ)
 SCHED_MACRO = -D MLFQ
 endif
 CFLAGS += $(SCHED_MACRO)
+ifdef GRAPH
+CFLAGS += -D GRAPH
+endif
 
 xv6.img: bootblock kernel
 	dd if=/dev/zero of=xv6.img count=10000
