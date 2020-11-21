@@ -27,6 +27,19 @@ pinit(void)
 
   for (int i = 0; i < 101; i++)
     queues[i] = 0;
+
+  #ifdef RR
+    cprintf("Scheduling: Round Robin\n");
+  #endif
+  #ifdef FCFS
+    cprintf("Scheduling: First Come First Serve\n");
+  #endif
+  #ifdef PBS
+    cprintf("Scheduling: Priority Based Scheduling\n");
+  #endif
+  #ifdef MLFQ
+    cprintf("Scheduling: Multi Level Feedback Queue\n");
+  #endif
 }
 
 // Must be called with interrupts disabled
@@ -106,6 +119,11 @@ void remove(struct node **head, int pid)
 int
 set_priority(int new_priority, int pid)
 {
+  #ifndef PBS
+    cprintf("Scheduling is not Priority Based!\n");
+    return -1;
+  #endif
+  
   if (new_priority < 0 || new_priority > 100)
     return -1;
 
